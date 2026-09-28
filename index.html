@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>問い合わせ管理 自動化デモ（GAS）</title>
+<meta name="description" content="Googleフォームの問い合わせに、受付番号・種別・優先度・担当を自動で付けて通知するGoogle Apps Scriptのデモ">
+<style>
+:root {
+  --bg: #f7f8fa; --panel: #ffffff; --text: #1f2328; --muted: #5f6873; --line: #e3e6ea;
+  --accent: #2f5d8a; --accent-soft: #e8f0fe;
+  --st-new: #fde8e8; --st-doing: #fff4d6; --st-done: #f1f3f4; --high: #d93025;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15181c; --panel: #1e2227; --text: #e6e8eb; --muted: #9aa3ad; --line: #2e343b;
+    --accent: #7fb0e0; --accent-soft: #22303f;
+    --st-new: #3a2224; --st-doing: #3a3220; --st-done: #262a2f; --high: #ff8a80;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15181c; --panel: #1e2227; --text: #e6e8eb; --muted: #9aa3ad; --line: #2e343b;
+  --accent: #7fb0e0; --accent-soft: #22303f;
+  --st-new: #3a2224; --st-doing: #3a3220; --st-done: #262a2f; --high: #ff8a80;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.7 system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+header { padding: 56px 0 32px; }
+.tag { display: inline-block; font-size: 12px; color: var(--accent); background: var(--accent-soft); padding: 2px 10px; border-radius: 99px; }
+h1 { font-size: clamp(24px, 4vw, 34px); line-height: 1.35; margin: 12px 0 8px; }
+h2 { font-size: 20px; margin: 0 0 16px; }
+.lead { color: var(--muted); margin: 0 0 20px; }
+a { color: var(--accent); }
+.btn { display: inline-block; border: 1px solid var(--accent); background: var(--accent); color: var(--panel); padding: 8px 18px; border-radius: 8px; text-decoration: none; font: inherit; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--accent); }
+section { padding: 28px 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; counter-reset: s; }
+.flow li { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; counter-increment: s; }
+.flow li::before { content: counter(s); display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; margin-right: 8px; }
+.flow b { display: block; margin-top: 4px; }
+.flow span { color: var(--muted); font-size: 13px; }
+.demo { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 800px) { .demo { grid-template-columns: minmax(0, 1fr); } }
+label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+input, textarea, select { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+textarea { min-height: 110px; resize: vertical; }
+.samples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.samples button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); border-radius: 99px; padding: 2px 10px; cursor: pointer; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 13px; }
+th { background: #2f5d8a; color: #fff; text-align: left; font-weight: 600; padding: 6px 8px; white-space: nowrap; }
+td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+td:nth-child(6) { min-width: 240px; }
+tr.s-未対応 td { background: var(--st-new); }
+tr.s-対応中 td { background: var(--st-doing); }
+tr.s-完了 td { background: var(--st-done); color: var(--muted); }
+tr.fresh td { animation: flash 1.2s ease-out; }
+@keyframes flash { from { box-shadow: inset 0 0 0 999px rgba(47,93,138,.25); } to { box-shadow: none; } }
+td select { padding: 2px 4px; font-size: 13px; width: auto; }
+.high { color: var(--high); font-weight: 700; }
+.nowrap { white-space: nowrap; }
+.mails { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
+.mail { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 13px; }
+.mail h3 { font-size: 13px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+.mail .subj { font-weight: 700; margin-bottom: 6px; }
+.mail pre { white-space: pre-wrap; margin: 0; font: inherit; }
+.note { font-size: 13px; color: var(--muted); }
+.shots { display: grid; gap: 20px; }
+.shots figure { margin: 0; }
+.shots img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; display: block; }
+.shots figcaption { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.tech { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.tech li { border: 1px solid var(--line); background: var(--panel); border-radius: 99px; padding: 2px 12px; font-size: 13px; }
+footer { padding: 32px 0 48px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <span class="tag">Google Apps Script デモ</span>
+  <h1>問い合わせ管理を、スプレッドシートだけで自動化</h1>
+  <p class="lead">Googleフォームに問い合わせが届いたら、受付番号・種別・優先度・担当を自動で付けて管理シートに登録し、担当者とお客様にメールを送ります。対応が止まっている問い合わせは毎朝まとめて知らせます。</p>
+  <a class="btn" href="#try">ブラウザで試す</a>
+  <a class="btn ghost" href="https://github.com/knm1029cat-dot/gas-inquiry-demo">コードを見る（GitHub）</a>
+</header>
+
+<main class="wrap">
+  <section>
+    <h2>自動でやること</h2>
+    <ol class="flow">
+      <li><b>受付番号を付ける</b><span>日付ごとの連番（INQ-20260926-001）</span></li>
+      <li><b>種別を判定</b><span>予約・日程／料金・お支払い／不具合・トラブル／その他</span></li>
+      <li><b>優先度を判定</b><span>「至急」「今日中」などがあれば「高」</span></li>
+      <li><b>担当に振り分け</b><span>種別ごとの担当者を管理シートに記入</span></li>
+      <li><b>メールを送る</b><span>担当者へ通知、お客様へ受付完了の自動返信</span></li>
+      <li><b>対応漏れを防ぐ</b><span>24時間以上「未対応」の問い合わせを毎朝通知</span></li>
+    </ol>
+  </section>
+
+  <section id="try">
+    <h2>ブラウザで試す</h2>
+    <p class="note">実際のスクリプト（Code.gs）と同じ判定ロジックで動きます。メールは送らず、送られる内容を下に表示します。入力した内容はどこにも保存・送信されません。</p>
+    <div class="demo">
+      <form class="card" id="form">
+        <label for="name">お名前</label>
+        <input id="name" value="小林 あおい" required>
+        <label for="email">メールアドレス</label>
+        <input id="email" type="email" value="aoi@example.com" required>
+        <label for="body">お問い合わせ内容</label>
+        <textarea id="body" required></textarea>
+        <div class="samples" id="samples"></div>
+        <div class="actions">
+          <button class="btn" type="submit">問い合わせを送る</button>
+          <button class="btn ghost" type="button" id="remind">放置チェックを実行</button>
+        </div>
+      </form>
+      <div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>受付番号</th><th>受付日時</th><th>お名前</th><th>種別</th><th>優先度</th><th>お問い合わせ内容</th><th>担当</th><th>ステータス</th><th>完了日時</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <p class="note">ステータスを「完了」にすると完了日時が入ります。</p>
+      </div>
+    </div>
+    <div class="mails" id="mails"></div>
+  </section>
+
+  <section>
+    <h2>実際のスプレッドシート</h2>
+    <div class="shots">
+      <figure><img src="images/manage-sheet.jpg" alt="管理シート。受付番号・種別・優先度・担当が自動で入り、ステータスで色分けされている" loading="lazy" width="1568" height="688"><figcaption>管理シート：種別・優先度・担当が自動で入り、ステータスで色分け</figcaption></figure>
+      <figure><img src="images/summary-sheet.jpg" alt="集計シート。種別別・ステータス別・要注意の件数" loading="lazy" width="1568" height="688"><figcaption>集計シート：種別別・ステータス別・要注意の件数</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>使っている技術</h2>
+    <ul class="tech">
+      <li>Google Apps Script</li><li>Googleスプレッドシート</li><li>Googleフォーム</li><li>MailApp</li><li>時間主導トリガー</li><li>Node.js（判定ロジックのテスト）</li>
+    </ul>
+    <p class="note">Code.gs を1つ貼り付けて「setup」を実行するだけで、シート・フォーム・トリガーが作られます。店名・種別のキーワード・担当者は冒頭の設定で変えられます。</p>
+  </section>
+</main>
+
+<footer class="wrap">サンプル商店（架空）のデモです。表示されている名前・メールアドレスはすべて架空のものです。</footer>
+
+<script>
+(async () => {
+  // Code.gs をそのまま読み込み、Google のサービスを使わない判定部分だけを使う
+  const src = await (await fetch('Code.gs')).text();
+  const gs = new Function(src + '\nreturn { classify, detectPriority, buildId, findOverdue, COL, ASSIGNEES, CONFIG };')();
+  const { COL } = gs;
+
+  const $ = id => document.getElementById(id);
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const dateKey = d => d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const rows = [];
+  function add(name, email, body, receivedAt, status) {
+    const cat = gs.classify(body);
+    const r = new Array(11).fill('');
+    r[COL.ID] = gs.buildId(dateKey(receivedAt), rows.map(x => x[COL.ID]));
+    r[COL.RECEIVED] = receivedAt; r[COL.NAME] = name; r[COL.EMAIL] = email;
+    r[COL.CATEGORY] = cat; r[COL.PRIORITY] = gs.detectPriority(body); r[COL.BODY] = body;
+    r[COL.ASSIGNEE] = gs.ASSIGNEES[cat].name; r[COL.STATUS] = status || '未対応';
+    if (r[COL.STATUS] === '完了') r[COL.DONE] = new Date(receivedAt.getTime() + 2 * 3600e3);
+    rows.push(r);
+    return r;
+  }
+
+  const ago = h => new Date(Date.now() - h * 3600e3);
+  add('山田 花子', 'hanako@example.com', '来週土曜日の14時に予約できますか？2名です。', ago(96), '完了');
+  add('鈴木 美咲', 'misaki@example.com', '注文した商品がまだ届いていないのですが、確認できますか。', ago(70), '対応中');
+  add('高橋 健', 'ken@example.com', '法人向けの料金プランと見積もりをお願いします。', ago(50));
+  add('田中 さくら', 'sakura@example.com', '予約の日時を変更したいです。', ago(30));
+  add('渡辺 ゆい', 'yui@example.com', 'お店の近くに駐車場はありますか？', ago(3));
+
+  function render(freshId) {
+    $('rows').innerHTML = rows.slice().reverse().map(r => `
+      <tr class="s-${r[COL.STATUS]}${r[COL.ID] === freshId ? ' fresh' : ''}">
+        <td class="nowrap">${r[COL.ID]}</td>
+        <td class="nowrap">${fmt(r[COL.RECEIVED])}</td>
+        <td class="nowrap">${esc(r[COL.NAME])}</td>
+        <td class="nowrap">${r[COL.CATEGORY]}</td>
+        <td class="${r[COL.PRIORITY] === '高' ? 'high' : ''}">${r[COL.PRIORITY]}</td>
+        <td>${esc(r[COL.BODY])}</td>
+        <td class="nowrap">${r[COL.ASSIGNEE]}</td>
+        <td><select data-id="${r[COL.ID]}" aria-label="ステータス">${['未対応', '対応中', '完了'].map(s => `<option${s === r[COL.STATUS] ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
+        <td class="nowrap">${r[COL.DONE] ? fmt(r[COL.DONE]) : ''}</td>
+      </tr>`).join('');
+  }
+
+  $('rows').addEventListener('change', e => {
+    const r = rows.find(x => x[COL.ID] === e.target.dataset.id);
+    r[COL.STATUS] = e.target.value;
+    r[COL.DONE] = e.target.value === '完了' ? (r[COL.DONE] || new Date()) : '';
+    render();
+  });
+
+  const mail = (title, subject, body) => `<div class="mail"><h3>${title}</h3><div class="subj">${esc(subject)}</div><pre>${esc(body)}</pre></div>`;
+  const shop = gs.CONFIG.SHOP_NAME;
+
+  $('form').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('name').value.trim(), email = $('email').value.trim(), body = $('body').value.trim();
+    if (!body) return;
+    const r = add(name, email, body, new Date());
+    render(r[COL.ID]);
+    const urgent = r[COL.PRIORITY] === '高' ? '至急・' : '';
+    $('mails').innerHTML =
+      mail('担当者への通知メール', `【${urgent}新規問い合わせ】${r[COL.ID]}（${r[COL.CATEGORY]}）`,
+        `${r[COL.ASSIGNEE]} 様\n\n新しい問い合わせが届きました。\n\n受付番号：${r[COL.ID]}\n種別　　：${r[COL.CATEGORY]}\n優先度　：${r[COL.PRIORITY]}\nお名前　：${name} 様\nメール　：${email}\n\n【内容】\n${body}`) +
+      mail('お客様への自動返信メール', `【${shop}】お問い合わせを受け付けました（${r[COL.ID]}）`,
+        `${name} 様\n\nお問い合わせいただき、ありがとうございます。\n以下の内容で受け付けました。担当より順次ご連絡いたします。\n\n受付番号：${r[COL.ID]}\n\n【お問い合わせ内容】\n${body}\n\n※このメールは自動送信です。\n${shop}`);
+  });
+
+  $('remind').addEventListener('click', () => {
+    const h = gs.CONFIG.REMIND_HOURS;
+    const overdue = gs.findOverdue(rows, new Date(), h);
+    const pad2 = d => (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    $('mails').innerHTML = overdue.length
+      ? mail('毎朝の放置チェックメール', `【要対応】未対応の問い合わせが${overdue.length}件あります`,
+          `${h}時間以上「未対応」のままの問い合わせです。\n\n` + overdue.map(r =>
+            `・${r[COL.ID]}（${r[COL.CATEGORY]} / 担当：${r[COL.ASSIGNEE]}）${pad2(r[COL.RECEIVED])} 受付　${r[COL.NAME]} 様`).join('\n'))
+      : mail('毎朝の放置チェック', '通知なし', `${h}時間以上「未対応」の問い合わせはありません。メールは送られません。`);
+  });
+
+  const samples = {
+    '予約': '来月3日の午後に2名で予約したいです。空いていますか？',
+    '支払い': '振込先の口座を教えてください。今日中に支払いたいです。',
+    '不具合': 'ログインするとエラーが出て動かないです。至急確認をお願いします。',
+    'その他': '営業時間を教えてください。',
+  };
+  $('samples').innerHTML = Object.keys(samples).map(k => `<button type="button" data-k="${k}">例：${k}</button>`).join('');
+  $('samples').addEventListener('click', e => { if (e.target.dataset.k) $('body').value = samples[e.target.dataset.k]; });
+  $('body').value = samples['不具合'];
+
+  render();
+})().catch(err => {
+  document.getElementById('rows').innerHTML = '<tr><td colspan="9">デモの読み込みに失敗しました。</td></tr>';
+  console.error(err);
+});
+</script>
+</body>
+</html>

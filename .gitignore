@@ -2,3 +2,5 @@
 /0*_*.jpg
 .codex-dev/
 node_modules/
+
+.vercel
